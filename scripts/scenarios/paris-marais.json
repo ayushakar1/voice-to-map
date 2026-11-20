@@ -1,0 +1,11 @@
+[
+  { "unit": "Alpha 1", "text": "Alpha one, I'm at the Saint-Paul church" },
+  { "unit": "Bravo 2", "text": "Bravo two here, we are at the corner of rue de Rivoli and rue du Temple" },
+  { "unit": "Alpha 1", "text": "I am south of the church" },
+  { "unit": "Alpha 1", "text": "Moving towards Place des Vosges" },
+  { "unit": "Bravo 2", "text": "Bravo, on se déplace vers le lycée Charlemagne" },
+  { "unit": "Alpha 1", "text": "We are behind the church now" },
+  { "unit": "Bravo 2", "text": "Holding position, two civilians nearby" },
+  { "unit": "Alpha 1", "text": "Moved 200 meters north" },
+  { "unit": "Bravo 2", "text": "Bravo, we're on rue Saint-Antoine" }
+]

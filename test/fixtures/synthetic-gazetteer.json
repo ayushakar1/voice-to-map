@@ -1,0 +1,232 @@
+[
+ {
+  "id": "n1",
+  "kind": "landmark",
+  "category": "church",
+  "name": "Église Saint-Paul-Saint-Louis",
+  "names": [
+   "Église Saint-Paul-Saint-Louis"
+  ],
+  "lat": 48.8545,
+  "lon": 2.3612
+ },
+ {
+  "id": "w2",
+  "kind": "landmark",
+  "category": "church",
+  "name": "Temple du Marais",
+  "names": [
+   "Temple du Marais"
+  ],
+  "lat": 48.8528,
+  "lon": 2.3655
+ },
+ {
+  "id": "n3",
+  "kind": "landmark",
+  "category": "square",
+  "name": "Place des Vosges",
+  "names": [
+   "Place des Vosges"
+  ],
+  "lat": 48.8556,
+  "lon": 2.3655
+ },
+ {
+  "id": "n4",
+  "kind": "landmark",
+  "category": "bridge",
+  "name": "Pont Marie",
+  "names": [
+   "Pont Marie"
+  ],
+  "lat": 48.8522,
+  "lon": 2.3575
+ },
+ {
+  "id": "n5",
+  "kind": "landmark",
+  "category": "school",
+  "name": "Lycée Charlemagne",
+  "names": [
+   "Lycée Charlemagne"
+  ],
+  "lat": 48.854,
+  "lon": 2.3598
+ },
+ {
+  "id": "n6",
+  "kind": "landmark",
+  "category": "cafe",
+  "name": "Café des Musées",
+  "names": [
+   "Café des Musées"
+  ],
+  "lat": 48.8566,
+  "lon": 2.3589
+ },
+ {
+  "id": "n7",
+  "kind": "landmark",
+  "category": "station",
+  "name": "Bastille",
+  "names": [
+   "Bastille"
+  ],
+  "lat": 48.8531,
+  "lon": 2.369
+ },
+ {
+  "id": "street:rue de rivoli",
+  "kind": "street",
+  "category": "street",
+  "name": "Rue de Rivoli",
+  "names": [
+   "Rue de Rivoli"
+  ],
+  "lines": [
+   [
+    [
+     2.35,
+     48.855
+    ],
+    [
+     2.355,
+     48.855
+    ],
+    [
+     2.36,
+     48.855
+    ]
+   ]
+  ],
+  "osmIds": [
+   "w101"
+  ],
+  "lat": 48.855,
+  "lon": 2.355
+ },
+ {
+  "id": "street:rue saint antoine",
+  "kind": "street",
+  "category": "street",
+  "name": "Rue Saint-Antoine",
+  "names": [
+   "Rue Saint-Antoine"
+  ],
+  "lines": [
+   [
+    [
+     2.355,
+     48.8535
+    ],
+    [
+     2.362,
+     48.8535
+    ],
+    [
+     2.368,
+     48.8535
+    ]
+   ]
+  ],
+  "osmIds": [
+   "w102"
+  ],
+  "lat": 48.85350000960932,
+  "lon": 2.3616666666672748
+ },
+ {
+  "id": "street:rue du temple",
+  "kind": "street",
+  "category": "street",
+  "name": "Rue du Temple",
+  "names": [
+   "Rue du Temple"
+  ],
+  "lines": [
+   [
+    [
+     2.355,
+     48.854
+    ],
+    [
+     2.355,
+     48.858
+    ],
+    [
+     2.355,
+     48.862
+    ]
+   ]
+  ],
+  "osmIds": [
+   "w103"
+  ],
+  "lat": 48.858,
+  "lon": 2.355
+ },
+ {
+  "id": "street:rue saint paul",
+  "kind": "street",
+  "category": "street",
+  "name": "Rue Saint-Paul",
+  "names": [
+   "Rue Saint-Paul"
+  ],
+  "lines": [
+   [
+    [
+     2.362,
+     48.851
+    ],
+    [
+     2.362,
+     48.8535
+    ]
+   ]
+  ],
+  "osmIds": [
+   "w104"
+  ],
+  "lat": 48.85225,
+  "lon": 2.3619999999996573
+ },
+ {
+  "id": "street:35th street",
+  "kind": "street",
+  "category": "street",
+  "name": "35th Street",
+  "names": [
+   "35th Street"
+  ],
+  "lines": [
+   [
+    [
+     2.35,
+     48.86
+    ],
+    [
+     2.36,
+     48.86
+    ]
+   ],
+   [
+    [
+     2.36,
+     48.86
+    ],
+    [
+     2.368,
+     48.86
+    ]
+   ]
+  ],
+  "osmIds": [
+   "w105",
+   "w106"
+  ],
+  "lat": 48.860000020537996,
+  "lon": 2.359500000001847
+ }
+]

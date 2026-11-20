@@ -1,0 +1,9 @@
+[
+  { "unit": "Alpha 1", "text": "Alpha one, we're at Herald Square" },
+  { "unit": "Alpha 1", "text": "I am south of the church" },
+  { "unit": "Bravo 2", "text": "Bravo two, corner of 5th Avenue and 34th Street" },
+  { "unit": "Alpha 1", "text": "I moved towards 35th street" },
+  { "unit": "Bravo 2", "text": "Heading towards the Empire State Building" },
+  { "unit": "Alpha 1", "text": "We're behind the church" },
+  { "unit": "Bravo 2", "text": "Moved one block west" }
+]

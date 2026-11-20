@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Voice-to-Map</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><circle cx=%228%22 cy=%228%22 r=%226%22 fill=%22%2333d17a%22/></svg>" />
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">VOICE-TO-MAP <span id="live" class="live off">● OFFLINE</span></div>
+    <div class="caps" id="caps"></div>
+    <label class="ao">AO
+      <select id="aoSelect"></select>
+    </label>
+  </header>
+
+  <main>
+    <aside id="side">
+      <section class="controls">
+        <div class="row">
+          <label>Callsign <input id="callsign" list="units" value="Alpha 1" autocomplete="off" /></label>
+          <datalist id="units"></datalist>
+        </div>
+        <div class="row">
+          <label>Speech
+            <select id="sttMode">
+              <option value="browser">Browser (Web Speech)</option>
+              <option value="voxtral">Mistral Voxtral (server)</option>
+            </select>
+          </label>
+          <label>Lang
+            <select id="lang">
+              <option value="en-US">EN</option>
+              <option value="fr-FR">FR</option>
+            </select>
+          </label>
+        </div>
+        <button id="ptt" class="ptt" title="Hold to talk (or hold Space)">🎙 HOLD TO TALK <small>(Space)</small></button>
+        <div id="partial" class="partial"></div>
+        <form id="textForm" class="row">
+          <input id="textInput" placeholder="…or type a report: “I am south of the church”" autocomplete="off" />
+          <button type="submit">Send</button>
+        </form>
+        <div id="lastLatency" class="latency"></div>
+      </section>
+
+      <section class="timeline">
+        <div class="tl-head">
+          <span>History</span>
+          <span>
+            <label class="small"><input type="checkbox" id="showLandmarks" /> landmarks</label>
+            <button id="resetBtn" class="ghost small" title="Clear all reports">Reset</button>
+          </span>
+        </div>
+        <ol id="events"></ol>
+      </section>
+    </aside>
+
+    <div id="mapwrap">
+      <div id="map"></div>
+      <div id="speaking" class="speaking hidden"></div>
+      <div id="placeHint" class="place-hint hidden">Click on the map to place this report · <a href="#" id="cancelPlace">cancel</a></div>
+      <div class="replay">
+        <button id="playBtn" class="ghost" title="Replay history">▶</button>
+        <input type="range" id="scrub" min="0" max="1000" value="1000" />
+        <span id="scrubLabel">LIVE</span>
+        <button id="liveBtn" class="ghost" title="Back to live">⏭</button>
+      </div>
+    </div>
+  </main>
+
+  <script src="/vendor/leaflet/leaflet.js"></script>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
