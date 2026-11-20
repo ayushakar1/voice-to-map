@@ -10,7 +10,7 @@ Spoken position reports → live shared map. EDTH Paris 2026 · Lysk challenge.
 
 ```bash
 npm install
-cp .env.example .env        # add MISTRAL_API_KEY (works without one, in a reduced mode)
+cp -n .env.example .env     # add FEATHERLESS_API_KEY or MISTRAL_API_KEY
 npm start                   # http://localhost:3000
 ```
 
@@ -19,8 +19,30 @@ Open it in **Chrome or Edge**, hold the button (or Space), speak, release.
 | Mode | Needs | What you get |
 |---|---|---|
 | No key | nothing | Browser speech recognition + rule-based parser. Good for UI work. |
+| `FEATHERLESS_API_KEY` | Featherless key | Mistral Small intent extraction hosted on Featherless + browser speech recognition. |
 | `MISTRAL_API_KEY` | key | Mistral LLM intent extraction + Voxtral STT option. **Demo mode.** |
 | Offline | `GAZETTEER_FILE=test/fixtures/synthetic-gazetteer.json` | No OSM calls; tests and dry-runs without Wi-Fi. |
+
+For the EDTH Featherless credits, save your key as `FEATHERLESS_API_KEY` in `.env`.
+The default intent model is `mistralai/Mistral-Small-3.2-24B-Instruct-2506` at
+`https://api.featherless.ai/v1`. Override it with `FEATHERLESS_LLM_MODEL` if needed.
+When both keys are configured, Featherless handles intent and Mistral handles Voxtral audio.
+With only Featherless configured, choose **Browser (Web Speech)** in the portal.
+The Voxtral option becomes available when `MISTRAL_API_KEY` is set. Restart the server after
+changing `.env`. The header shows the configured provider, and each history entry records
+the actual engine used, including rule-parser fallback if the API fails.
+Keys stay on the server. The API state endpoint exposes provider/model names without credentials.
+The synthetic gazetteer removes external map lookups, while AI calls, browser speech recognition,
+and basemap tiles can still require internet access.
+
+The **New York – Midtown / Times Square** preset includes a bundled OpenStreetMap
+snapshot with 81 named streets and 3,986 named landmarks. It loads immediately
+without Overpass and covers 34th Street, 35th Street, 42nd Street, and Times Square.
+Try "Alpha at thirty fourth street", "I am at Times Square", or "corner of 5th
+Avenue and 34th Street". A Paris test fixture is skipped when New York is selected.
+Previous positions and movement trails use the active area, and geocoder caches
+are cleared when areas change. Existing reports remain in History.
+Data provenance and license are documented in [server/maps/README.md](server/maps/README.md).
 
 Other commands:
 
@@ -47,7 +69,7 @@ PTT ──► STT ───────────► Intent (Mistral JSON) ─
 | File | Role |
 |---|---|
 | `server/stt.js` | Voxtral `POST /v1/audio/transcriptions`, biased with place names from the AO |
-| `server/intent.js` | Mistral chat completion in JSON mode (schema + few-shot, EN/FR). `ruleParse()` fallback |
+| `server/intent.js` | Featherless or Mistral chat completion in JSON mode (schema + few-shot, EN/FR). `ruleParse()` fallback |
 | `server/gazetteer.js` | Preloads every named POI + street in the AO from Overpass once, caches to `data/`, fuzzy search with distance bias |
 | `server/categories.js` | Spoken generic words (church/église, bridge/pont…) ↔ OSM tags |
 | `server/resolver.js` | Relation → coordinates: offsets, behind/in-front relative to approach direction, street intersections, towards/away, dead reckoning |

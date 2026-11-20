@@ -1,5 +1,5 @@
 // Intent extraction: transcript -> structured position/movement report.
-// Primary: Mistral chat completion in JSON mode. Fallback: rule-based parser (no key / API down).
+// Featherless or Mistral chat completion in JSON mode, with a rule-based fallback.
 import { config } from './config.js';
 import { categoryFromWord } from './categories.js';
 
@@ -76,12 +76,12 @@ function sanitize(o) {
 }
 
 export async function extractIntent(transcript, ctx = {}) {
-  if (config.mistralKey) {
+  if (config.llmKey) {
     try {
       const t0 = Date.now();
-      const res = await fetch(`${config.mistralBase}/chat/completions`, {
+      const res = await fetch(`${config.llmBase.replace(/\/+$/, '')}/chat/completions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.mistralKey}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.llmKey}` },
         body: JSON.stringify({
           model: config.llmModel,
           temperature: 0,
@@ -89,12 +89,12 @@ export async function extractIntent(transcript, ctx = {}) {
           response_format: { type: 'json_object' },
           messages: buildMessages(transcript, ctx),
         }),
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(30_000),
       });
-      if (!res.ok) throw new Error(`Mistral ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      if (!res.ok) throw new Error(`${config.llmProvider} ${res.status}: ${(await res.text()).replaceAll(config.llmKey, '[redacted]').slice(0, 200)}`);
       const j = await res.json();
       const parsed = JSON.parse(j.choices[0].message.content);
-      return { intent: sanitize(parsed), engine: `mistral:${config.llmModel}`, ms: Date.now() - t0 };
+      return { intent: sanitize(parsed), engine: `${config.llmProvider}:${config.llmModel}`, ms: Date.now() - t0 };
     } catch (e) {
       console.warn(`[intent] LLM failed, using rule parser: ${e.message}`);
       const t0 = Date.now();

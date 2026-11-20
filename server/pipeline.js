@@ -29,25 +29,29 @@ export function aoCenter() {
 
 export async function processReport({ transcript, unit, source = 'text', stt = null, receivedAt = Date.now() }) {
   const t0 = Date.now();
+  const ao = gazetteer.ao;
   const defaultUnit = normalizeCallsign(unit) || 'Unit 1';
-  const prevForPrompt = store.lastPosition(defaultUnit);
+  const prevForPrompt = store.lastPosition(defaultUnit, Infinity, ao.bbox);
   const ctx = {
     defaultCallsign: defaultUnit,
     lastPositionText: prevForPrompt?.label ?? null,
     nearbyNames: gazetteer.namesNear(prevForPrompt ?? aoCenter(), 80),
   };
   const { intent, engine, ms: llmMs, error: llmError } = await extractIntent(transcript, ctx);
+  if (gazetteer.loading || gazetteer.ao !== ao) throw new Error('Area changed while processing this report. Please submit it again.');
   const callsign = matchCallsign(normalizeCallsign(intent.callsign), defaultUnit);
-  const prev = store.lastPosition(callsign);
+  const prev = store.lastPosition(callsign, Infinity, ao.bbox);
 
   const g0 = Date.now();
   const result = await resolve(gazetteer, intent, prev, aoCenter());
+  if (gazetteer.loading || gazetteer.ao !== ao) throw new Error('Area changed while resolving this report. Please submit it again.');
   const geoMs = Date.now() - g0;
 
   const position = result.status === 'resolved' ? { lat: result.lat, lon: result.lon, accuracyM: result.accuracyM } : null;
   const event = {
     id: crypto.randomUUID(),
     ts: receivedAt,
+    ao: { id: ao.id, bbox: ao.bbox },
     unit: callsign,
     source,
     transcript,

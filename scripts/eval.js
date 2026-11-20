@@ -1,5 +1,5 @@
 // Intent-extraction eval: runs every utterance in test/fixtures/eval-set.json through extractIntent
-// (Mistral if MISTRAL_API_KEY is set, else the rule parser) and scores each expected field.
+// (Featherless or Mistral when configured, else the rule parser) and scores each expected field.
 // Usage: node scripts/eval.js [path/to/eval-set.json]
 import fs from 'node:fs';
 import { extractIntent } from '../server/intent.js';

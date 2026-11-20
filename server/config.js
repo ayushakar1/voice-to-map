@@ -18,6 +18,8 @@ function loadDotEnv() {
 loadDotEnv();
 
 const env = (k, d) => (process.env[k] ?? '') !== '' ? process.env[k] : d;
+const featherlessKey = env('FEATHERLESS_API_KEY', '');
+const mistralKey = env('MISTRAL_API_KEY', '');
 
 // Areas of operation. bbox = [south, west, north, east]
 export const AO_PRESETS = {
@@ -32,17 +34,25 @@ export const AO_PRESETS = {
     lang: 'fr',
   },
   'nyc-midtown': {
-    label: 'New York – Midtown (has 35th St)',
-    bbox: [40.7440, -73.9950, 40.7560, -73.9780],
+    label: 'New York – Midtown / Times Square',
+    bbox: [40.7440, -73.9950, 40.7640, -73.9780],
     lang: 'en',
   },
 };
 
 export const config = {
   port: Number(env('PORT', 3000)),
-  mistralKey: env('MISTRAL_API_KEY', ''),
+  mistralKey,
   mistralBase: env('MISTRAL_BASE_URL', 'https://api.mistral.ai/v1'),
-  llmModel: env('MISTRAL_LLM_MODEL', 'mistral-small-latest'),
+  // Prefer Featherless for intent when configured. Voxtral always uses the Mistral key.
+  llmProvider: featherlessKey ? 'featherless' : 'mistral',
+  llmKey: featherlessKey || mistralKey,
+  llmBase: featherlessKey
+    ? env('FEATHERLESS_BASE_URL', 'https://api.featherless.ai/v1')
+    : env('MISTRAL_BASE_URL', 'https://api.mistral.ai/v1'),
+  llmModel: featherlessKey
+    ? env('FEATHERLESS_LLM_MODEL', 'mistralai/Mistral-Small-3.2-24B-Instruct-2506')
+    : env('MISTRAL_LLM_MODEL', 'mistral-small-latest'),
   sttModel: env('MISTRAL_STT_MODEL', 'voxtral-mini-latest'),
   overpassUrl: env('OVERPASS_URL', 'https://overpass-api.de/api/interpreter'),
   nominatimUrl: env('NOMINATIM_URL', 'https://nominatim.openstreetmap.org'),

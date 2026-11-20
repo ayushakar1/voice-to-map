@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import * as turf from '@turf/turf';
-import { config } from './config.js';
+import { config, ROOT } from './config.js';
 import { categoryFromTags, GENERIC_WORDS } from './categories.js';
 import { nameSimilarity, normalize, tokens } from './text.js';
 
@@ -72,24 +72,49 @@ export function buildFeatures(osm) {
 }
 
 class Gazetteer {
-  constructor() { this.features = []; this.ao = null; this.source = 'empty'; this.nominatimCache = new Map(); this.lastNominatim = 0; }
+  constructor() { this.features = []; this.ao = null; this.source = 'empty'; this.loading = false; this.nominatimCache = new Map(); this.lastNominatim = 0; }
 
   cacheFile(ao) { return path.join(config.dataDir, `gazetteer-${ao.id}-${ao.bbox.join('_')}.json`); }
 
   async load(ao, { force = false } = {}) {
+    this.loading = true;
+    try {
+      await this.loadArea(ao, { force });
+    } finally {
+      this.loading = false;
+    }
+    return this.stats();
+  }
+
+  activate(ao, features, source) {
     this.ao = ao;
+    this.features = features;
+    this.source = source;
+    this.nominatimCache.clear();
+    return this.stats();
+  }
+
+  async loadArea(ao, { force }) {
+    const [south, west, north, east] = ao.bbox;
+    const inArea = (feature) => feature.lat >= south && feature.lat <= north && feature.lon >= west && feature.lon <= east;
     const fixture = process.env.GAZETTEER_FILE;
     if (fixture) {
-      this.features = JSON.parse(fs.readFileSync(fixture, 'utf8'));
-      this.source = `fixture:${path.basename(fixture)}`;
-      return this.stats();
+      const features = JSON.parse(fs.readFileSync(fixture, 'utf8')).filter(inArea);
+      if (features.length) return this.activate(ao, features, `fixture:${path.basename(fixture)}`);
+      console.warn(`[gazetteer] ${path.basename(fixture)} has no features in ${ao.id}; loading regional data`);
     }
     const file = this.cacheFile(ao);
     if (!force && fs.existsSync(file)) {
-      this.features = JSON.parse(fs.readFileSync(file, 'utf8'));
-      this.source = 'disk-cache';
-      return this.stats();
+      const features = JSON.parse(fs.readFileSync(file, 'utf8')).filter(inArea);
+      if (features.length) return this.activate(ao, features, 'disk-cache');
     }
+    const bundledFile = path.join(ROOT, 'server/maps', `${ao.id}.json`);
+    let bundled;
+    if (fs.existsSync(bundledFile)) {
+      const snapshot = JSON.parse(fs.readFileSync(bundledFile, 'utf8'));
+      if (JSON.stringify(snapshot.ao.bbox) === JSON.stringify(ao.bbox)) bundled = snapshot;
+    }
+    if (!force && bundled) return this.activate(ao, bundled.features, `bundled OpenStreetMap (${bundled.retrievedAt})`);
     const q = overpassQuery(ao.bbox);
     let lastErr;
     for (const url of OVERPASS_MIRRORS) {
@@ -103,21 +128,20 @@ class Gazetteer {
         });
         if (!res.ok) throw new Error(`Overpass ${res.status}`);
         const osm = await res.json();
-        this.features = buildFeatures(osm);
+        const features = buildFeatures(osm).filter(inArea);
+        if (!features.length) throw new Error('Overpass returned no named features');
         fs.mkdirSync(config.dataDir, { recursive: true });
-        fs.writeFileSync(file, JSON.stringify(this.features));
-        this.source = `overpass (${url.split('/')[2]}, ${Date.now() - t0} ms)`;
-        return this.stats();
+        fs.writeFileSync(file, JSON.stringify(features));
+        return this.activate(ao, features, `overpass (${url.split('/')[2]}, ${Date.now() - t0} ms)`);
       } catch (e) { lastErr = e; console.warn(`[gazetteer] ${url} failed: ${e.message}`); }
     }
-    this.features = [];
-    this.source = `empty (Overpass failed: ${lastErr?.message}) – Nominatim fallback only`;
-    return this.stats();
+    if (bundled) return this.activate(ao, bundled.features, `bundled OpenStreetMap (${bundled.retrievedAt}; refresh unavailable)`);
+    return this.activate(ao, [], `empty (Overpass failed: ${lastErr?.message}) – Nominatim fallback only`);
   }
 
   stats() {
     const streets = this.features.filter((f) => f.kind === 'street').length;
-    return { source: this.source, total: this.features.length, streets, landmarks: this.features.length - streets };
+    return { source: this.source, loading: this.loading, total: this.features.length, streets, landmarks: this.features.length - streets };
   }
 
   /** Distance in metres from a {lat,lon} to a feature (nearest point for streets). */
@@ -185,7 +209,7 @@ class Gazetteer {
   /** Nominatim fallback, bounded to the AO. Respects the 1 req/s usage policy. */
   async nominatim(query) {
     if (!this.ao || !query) return [];
-    const key = query.toLowerCase();
+    const key = `${this.ao.bbox.join(',')}:${query.toLowerCase()}`;
     if (this.nominatimCache.has(key)) return this.nominatimCache.get(key);
     const wait = 1100 - (Date.now() - this.lastNominatim);
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
