@@ -75,32 +75,52 @@ function sanitize(o) {
   return out;
 }
 
+async function callOpenAICompatible({ baseURL, apiKey, model, messages }) {
+  const res = await fetch(`${baseURL}/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ model, temperature: 0, max_tokens: 400, messages }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw new Error(`${baseURL} ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const j = await res.json();
+  return JSON.parse(j.choices[0].message.content);
+}
+
 export async function extractIntent(transcript, ctx = {}) {
+  // Priority: Featherless > Mistral > rule-based fallback
+  if (config.featherlessKey) {
+    try {
+      const t0 = Date.now();
+      const parsed = await callOpenAICompatible({
+        baseURL: config.featherlessBase,
+        apiKey: config.featherlessKey,
+        model: config.featherlessModel,
+        messages: buildMessages(transcript, ctx),
+      });
+      return { intent: sanitize(parsed), engine: `featherless:${config.featherlessModel}`, ms: Date.now() - t0 };
+    } catch (e) {
+      console.warn(`[intent] Featherless failed, trying Mistral: ${e.message}`);
+    }
+  }
+
   if (config.mistralKey) {
     try {
       const t0 = Date.now();
-      const res = await fetch(`${config.mistralBase}/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.mistralKey}` },
-        body: JSON.stringify({
-          model: config.llmModel,
-          temperature: 0,
-          max_tokens: 400,
-          response_format: { type: 'json_object' },
-          messages: buildMessages(transcript, ctx),
-        }),
-        signal: AbortSignal.timeout(10_000),
+      const parsed = await callOpenAICompatible({
+        baseURL: config.mistralBase,
+        apiKey: config.mistralKey,
+        model: config.llmModel,
+        messages: buildMessages(transcript, ctx),
       });
-      if (!res.ok) throw new Error(`Mistral ${res.status}: ${(await res.text()).slice(0, 200)}`);
-      const j = await res.json();
-      const parsed = JSON.parse(j.choices[0].message.content);
       return { intent: sanitize(parsed), engine: `mistral:${config.llmModel}`, ms: Date.now() - t0 };
     } catch (e) {
-      console.warn(`[intent] LLM failed, using rule parser: ${e.message}`);
+      console.warn(`[intent] Mistral failed, using rule parser: ${e.message}`);
       const t0 = Date.now();
       return { intent: ruleParse(transcript), engine: 'rules (LLM error)', ms: Date.now() - t0, error: e.message };
     }
   }
+
   const t0 = Date.now();
   return { intent: ruleParse(transcript), engine: 'rules', ms: Date.now() - t0 };
 }
@@ -144,9 +164,11 @@ function distanceFrom(text) {
   return v;
 }
 
-const NUMW = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, twenty: 20, thirty: 30,
+const NUMW = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, twenty: 20, thirty: 30,
   forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90, un: 1, deux: 2, trois: 3, quatre: 4, cinq: 5, six_: 6, dix: 10,
-  vingt: 20, trente: 30, quarante: 40, cinquante: 50 };
+  vingt: 20, trente: 30, quarante: 40, cinquante: 50
+};
 /** "two hundred meters" -> "200 meters", "cent metres" -> "100 metres" (only before a distance unit) */
 function spokenNumbers(t) {
   return t.replace(/\b((?:(?:a|one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|un|deux|trois|quatre|cinq|dix|vingt|trente|quarante|cinquante|hundred|cents?|and|et)\s+)+)(m|meters?|metres?|km|yards?|blocks?)\b/g, (all, words, unit) => {
