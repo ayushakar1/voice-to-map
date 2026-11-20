@@ -164,11 +164,13 @@ class Gazetteer {
       }
       if (best >= 0.5) named.push(scoreFeature(f, best, true));
     }
-    if (named.length || qSpecific.length) return named.sort((a, b) => b.score - a.score).slice(0, limit);
+    if (named.length) return named.sort((a, b) => b.score - a.score).slice(0, limit);
 
-    // Pass 2: generic reference ("the church") -> nearest feature of that category.
+    // Pass 2: generic reference ("the church", "town hall") -> nearest feature of that category.
+    // If the speaker gave a name we could not match, still offer the nearest of that kind, but scored low
+    // so the resolver also asks Nominatim and the card is flagged.
     if (!category) return [];
-    const generic = pool.filter((f) => f.category === category).map((f) => scoreFeature(f, 0.6, false));
+    const generic = pool.filter((f) => f.category === category).map((f) => scoreFeature(f, qSpecific.length ? 0.5 : 0.6, false));
     return generic.sort((a, b) => b.score - a.score).slice(0, limit);
   }
 

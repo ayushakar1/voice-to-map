@@ -25,7 +25,7 @@ function snapshot() {
     ao: gazetteer.ao,
     aoPresets: Object.fromEntries(Object.entries(AO_PRESETS).map(([k, v]) => [k, v.label])),
     gazetteer: gazetteer.stats(),
-    capabilities: { llm: !!config.mistralKey, serverStt: !!config.mistralKey, llmModel: config.llmModel, sttModel: config.sttModel },
+    capabilities: { llm: !!config.llmKey, serverStt: !!config.mistralKey, llmModel: config.llmModel, sttModel: config.sttModel },
     events: store.events,
     colors: store.colors,
   };
@@ -113,5 +113,5 @@ console.log(`[boot] loading gazetteer for ${ao.label} …`);
 gazetteer.load(ao).then((s) => console.log('[boot] gazetteer:', s));
 server.listen(config.port, () => {
   console.log(`[boot] Voice-to-Map on http://localhost:${config.port}`);
-  console.log(`[boot] LLM: ${config.mistralKey ? config.llmModel : 'OFF (rule parser)'} | server STT: ${config.mistralKey ? config.sttModel : 'OFF (use browser STT or typing)'}`);
+  console.log(`[boot] LLM: ${config.llmKey ? `${config.llmModel} @ ${config.llmBase}` : 'OFF (rule parser)'} | server STT: ${config.mistralKey ? config.sttModel : 'OFF (use browser STT or typing)'}`);
 });

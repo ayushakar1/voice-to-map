@@ -19,7 +19,8 @@ Return ONLY a JSON object with these keys:
   "relation": one of ${JSON.stringify(RELATIONS)},
                                      // how the unit relates to the anchor. "moved to X" / "arrived at X" -> "at" with type "movement".
                                      // "moving towards X" / "heading to X" -> "towards". "moved 200 m north" (no anchor) -> "direction_only".
-  "anchor": {"text": string, "name": string|null, "category": string|null, "kind": "landmark"|"street"} | null,
+  "anchor": {"text": string, "name": string|null, "category": string|null, "kind": "landmark"|"street"|"unit"} | null,
+                                     // kind "unit" when the reference point is another team from KNOWN UNITS ("approaching Alpha 1"): name = that callsign
                                      // text = words as spoken; name = best real place name (prefer an exact name from NEARBY PLACES if it clearly matches);
                                      // category = generic type in English singular (church, street, bridge, park, school, station, square, cafe...)
   "anchor2": same shape | null,      // second street for "corner of A and B" (relation "intersection") or second place for "between"
@@ -32,7 +33,9 @@ Rules:
 - "behind", "in front of", "across from/opposite" keep that relation; do not convert them to compass directions.
 - "the church" without a name: name=null, category="church".
 - Numbered streets: write "35th Street" style. French: keep French names ("Rue Saint-Antoine").
-- Never invent a place that was not mentioned.`;
+- Never invent a place that was not mentioned.
+- Speech recognition garbles callsigns ("brows to", "Broward to" = "Bravo 2"): map them to KNOWN UNITS when the sound is close.
+- "approaching X", "closing on X", "joining X" = movement towards X.`;
 
 const FEWSHOT = [
   ['I am south of the church', { callsign: null, type: 'position', relation: 'south_of', anchor: { text: 'the church', name: null, category: 'church', kind: 'landmark' }, anchor2: null, distance_m: null, bearing: null, note: null, confidence: 0.95 }],
@@ -44,6 +47,7 @@ function buildMessages(transcript, ctx) {
   const context = [
     ctx.defaultCallsign ? `Reporting unit (if not spoken): ${ctx.defaultCallsign}` : null,
     ctx.lastPositionText ? `Unit's last known position: ${ctx.lastPositionText}` : 'Unit has no known position yet.',
+    ctx.knownUnits?.length ? `KNOWN UNITS: ${ctx.knownUnits.join('; ')}` : null,
     ctx.nearbyNames?.length ? `NEARBY PLACES: ${ctx.nearbyNames.join('; ')}` : null,
   ].filter(Boolean).join('\n');
   const msgs = [{ role: 'system', content: SYSTEM_PROMPT }];
@@ -75,30 +79,56 @@ function sanitize(o) {
   return out;
 }
 
+/** Pull the first JSON object out of a reply (handles ```json fences and chatter around it). */
+export function parseJsonReply(text) {
+  try { return JSON.parse(text); } catch { /* fall through */ }
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start >= 0 && end > start) return JSON.parse(text.slice(start, end + 1));
+  throw new Error(`No JSON in reply: ${text.slice(0, 120)}`);
+}
+
+async function callLLM(messages, jsonMode) {
+  const body = { model: config.llmModel, temperature: 0, max_tokens: 400, messages };
+  if (jsonMode) body.response_format = { type: 'json_object' };
+  const res = await fetch(`${config.llmBase}/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.llmKey}`, 'User-Agent': config.userAgent },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) {
+    const err = new Error(`LLM ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    err.status = res.status;
+    throw err;
+  }
+  const j = await res.json();
+  return j.choices[0].message.content;
+}
+
+let jsonModeSupported = config.llmJsonMode;
+
 export async function extractIntent(transcript, ctx = {}) {
-  if (config.mistralKey) {
+  if (config.llmKey) {
+    const t0 = Date.now();
     try {
-      const t0 = Date.now();
-      const res = await fetch(`${config.mistralBase}/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.mistralKey}` },
-        body: JSON.stringify({
-          model: config.llmModel,
-          temperature: 0,
-          max_tokens: 400,
-          response_format: { type: 'json_object' },
-          messages: buildMessages(transcript, ctx),
-        }),
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (!res.ok) throw new Error(`Mistral ${res.status}: ${(await res.text()).slice(0, 200)}`);
-      const j = await res.json();
-      const parsed = JSON.parse(j.choices[0].message.content);
-      return { intent: sanitize(parsed), engine: `mistral:${config.llmModel}`, ms: Date.now() - t0 };
+      const messages = buildMessages(transcript, ctx);
+      let content;
+      try {
+        content = await callLLM(messages, jsonModeSupported);
+      } catch (e) {
+        // Some OpenAI-compatible providers reject response_format: retry once without it and remember.
+        if (jsonModeSupported && e.status === 400) {
+          console.warn('[intent] provider rejected JSON mode, continuing without it');
+          jsonModeSupported = false;
+          content = await callLLM(messages, false);
+        } else throw e;
+      }
+      return { intent: sanitize(parseJsonReply(content)), engine: `llm:${config.llmModel}`, ms: Date.now() - t0 };
     } catch (e) {
       console.warn(`[intent] LLM failed, using rule parser: ${e.message}`);
-      const t0 = Date.now();
-      return { intent: ruleParse(transcript), engine: 'rules (LLM error)', ms: Date.now() - t0, error: e.message };
+      const t1 = Date.now();
+      return { intent: ruleParse(transcript), engine: 'rules (LLM error)', ms: Date.now() - t1, error: e.message };
     }
   }
   const t0 = Date.now();
@@ -124,6 +154,9 @@ function bearingFrom(text) {
 function anchorFrom(text) {
   let t = text.split(/[,;]/)[0].trim().replace(/^(the|a|an|la|le|les|l|de la|du|des|de)\s+/i, '').replace(/[.,!?]+$/, '').trim();
   t = t.replace(/\s+(now|right now|over|out|maintenant)$/i, '').trim();
+  // "alpha 1 to the south", "the church from the east": keep the reference, drop the trailing direction
+  t = t.replace(/\s+(?:to|from|on) the (?:north|south|east|west)(?:\s*(?:east|west))?(?: side)?$/i, '').trim();
+  t = t.replace(/^(?:approaching|heading to|moving to|going to)\s+/i, '').trim();
   if (!t) return null;
   const category = categoryFromWord(t);
   const kind = category === 'street' ? 'street' : 'landmark';
@@ -171,7 +204,7 @@ export function ruleParse(raw) {
 
   // Callsign: "Alpha 2 here", "this is Bravo one", "Alpha two, ..."
   const cs = original.match(/^\s*(?:this is\s+)?((?:alpha|bravo|charlie|delta|echo|foxtrot|golf|hotel|india|juliet|kilo|lima|mike|november|oscar|papa|quebec|romeo|sierra|tango|uniform|victor|whiskey|x-?ray|yankee|zulu|team\s+\w+|unit\s+\w+)(?:[\s-]+(?:\d+|one|two|three|four|five|six|seven|eight|nine|un|deux|trois))?)\b(?:\s+here|\s+ici)?[\s,:.-]*/i);
-  if (cs) {
+  if (cs && !/^(alpha|bravo|charlie|delta|echo|foxtrot|golf|hotel|india|juliet|kilo|lima|mike|november|oscar|papa|quebec|romeo|sierra|tango|uniform|victor|whiskey|x-?ray|yankee|zulu)$/i.test(cs[1].trim()) || (cs && /\s+here|\s+ici|[,:]/i.test(cs[0]))) {
     out.callsign = cs[1].replace(/\b\w/g, (c) => c.toUpperCase()).replace(/\bOne\b/, '1').replace(/\bTwo\b/, '2').replace(/\bThree\b/, '3');
     t = t.slice(cs[0].length);
   }
@@ -180,7 +213,7 @@ export function ruleParse(raw) {
     out.type = 'status'; out.note = original; out.confidence = 0.7; return out;
   }
 
-  const isMove = /\b(moved?|moving|heading|going|advancing|proceeding|walking|running|driving|crossing|arrived|reached|je me deplace|on se deplace|on avance|j avance|en route|direction|vers|arriv\w*|parti)\b/.test(t);
+  const isMove = /\b(moved?|moving|approaching|closing|nearing|joining|heading|going|advancing|proceeding|walking|running|driving|crossing|arrived|reached|je me deplace|on se deplace|on avance|j avance|en route|direction|vers|arriv\w*|parti)\b/.test(t);
   out.type = isMove ? 'movement' : 'position';
   out.distance_m = distanceFrom(t);
 
@@ -196,7 +229,7 @@ export function ruleParse(raw) {
   if (m) { out.relation = 'between'; out.anchor = anchorFrom(m[1]); out.anchor2 = anchorFrom(m[2]); out.confidence = 0.7; return out; }
 
   const patterns = [
-    [/\b(?:towards?|toward|heading (?:to|for)|en direction de|direction|vers)\s+(.+)$/, 'towards'],
+    [/\b(?:towards?|toward|heading (?:to|for)|approaching|closing (?:in )?on|nearing|joining|moving up to|en direction de|direction|vers|on rejoint|on approche de)\s+(.+)$/, 'towards'],
     [/\b(?:away from|loin de|s eloigne de)\s+(.+)$/, 'away_from'],
     [/\b(?:behind|derriere)\s+(.+)$/, 'behind'],
     [/\b(?:in front of|devant|en face de l entree de)\s+(.+)$/, 'in_front_of'],
