@@ -22,6 +22,11 @@ Open it in **Chrome or Edge**, hold the button (or Space), speak, release.
 | `MISTRAL_API_KEY` | key | Mistral LLM intent extraction + Voxtral STT option. **Demo mode.** |
 | Offline | `GAZETTEER_FILE=test/fixtures/synthetic-gazetteer.json` | No OSM calls; tests and dry-runs without Wi-Fi. |
 
+**Intent on Featherless (or any OpenAI-compatible host):** set `LLM_BASE_URL=https://api.featherless.ai/v1`,
+`LLM_API_KEY`, and `LLM_MODEL` to a Mistral model id from their catalogue. Speech-to-text still needs either
+`MISTRAL_API_KEY` (Voxtral) or browser speech. If the provider rejects JSON mode, the app retries without it
+and extracts the JSON from the reply.
+
 Other commands:
 
 ```bash

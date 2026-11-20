@@ -91,13 +91,13 @@ function renderTimeline() {
     li.innerHTML = `
       <div class="ev-top"><span><span class="ev-unit">${esc(e.unit)}</span> · ${e.source === 'text' ? '⌨' : '🎙'} ${fmtTime(e.ts)}</span>
         <span title="server: STT ${lat.sttMs ?? '-'} ms · LLM ${lat.llmMs} ms · geo ${lat.geoMs} ms">${client ? `⏱ ${(client / 1000).toFixed(1)} s` : `⚙ ${lat.serverMs} ms`}</span></div>
-      <div class="ev-text">“${esc(e.transcript)}”</div>
+      <div class="ev-text">“${esc(e.transcript)}”${e.interpretedAs ? `<div class="ev-expl">heard as: ${esc(e.interpretedAs)}</div>` : ''}</div>
       <div class="ev-meta">
         <span class="chip">${TYPE_LABEL[i.type] ?? '?'} ${esc(i.relation ?? '')}</span>
         ${r.anchor ? `<span class="chip">${esc(r.anchor.name)}</span>` : ''}
         ${r.anchor2 ? `<span class="chip">${esc(r.anchor2.name)}</span>` : ''}
         <span class="chip ${status[0]}">${status[1]}</span>
-        <span class="chip" title="intent engine">${esc((e.intentEngine ?? '').replace('mistral:', ''))}</span>
+        <span class="chip" title="intent engine">${esc((e.intentEngine ?? '').replace(/^(mistral|llm):/, '').split('/').pop())}</span>
         ${i.note ? `<span class="chip warn">${esc(i.note)}</span>` : ''}
       </div>
       <div class="ev-expl">${esc(r.explanation ?? '')}</div>

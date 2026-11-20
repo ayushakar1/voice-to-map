@@ -1,6 +1,7 @@
 // Spatial reasoning: (intent + unit's previous position + gazetteer) -> estimated coordinates.
 import * as turf from '@turf/turf';
 import { config } from './config.js';
+import { normalize } from './text.js';
 
 const BEARING_DEG = { N: 0, NE: 45, E: 90, SE: 135, S: 180, SW: -135, W: -90, NW: -45 };
 const REL_BEARING = { north_of: 'N', north_east_of: 'NE', east_of: 'E', south_east_of: 'SE', south_of: 'S', south_west_of: 'SW', west_of: 'W', north_west_of: 'NW' };
@@ -17,8 +18,18 @@ function featureSummary(f) {
 }
 
 /** Find the best gazetteer feature for an anchor; Nominatim as fallback. */
-export async function resolveAnchor(gaz, anchor, near, forceId = null) {
+const unitKey = (s) => normalize(String(s ?? '')).replace(/\b(one|won)\b/g, '1').replace(/\b(two|to|too)\b/g, '2').replace(/\b(three)\b/g, '3').replace(/\s+/g, ' ').trim();
+
+export async function resolveAnchor(gaz, anchor, near, forceId = null, units = []) {
   if (!anchor) return { best: null, candidates: [] };
+  // Another team as the reference point ("approaching Alpha 1")
+  for (const u of units) {
+    const k = unitKey(u.name);
+    if ([anchor.name, anchor.text].some((t) => t && (unitKey(t) === k || unitKey(t).startsWith(k + ' ')))) {
+      const f = { id: `unit:${u.name}`, kind: 'unit', category: 'unit', name: u.name, names: [u.name], lat: u.lat, lon: u.lon };
+      return { best: { feature: f, nameScore: 1, distM: Math.round(gaz.distanceTo(f, near)), score: 1, via: 'unit' }, candidates: [] };
+    }
+  }
   if (forceId) {
     const f = gaz.features.find((x) => x.id === forceId) ?? [...gaz.nominatimCache.values()].flat().find((x) => x.id === forceId);
     if (f) return { best: { feature: f, nameScore: 1, distM: Math.round(gaz.distanceTo(f, near)), score: 1, via: 'operator' }, candidates: [] };
@@ -76,7 +87,7 @@ function streetIntersection(f1, f2, near) {
 /**
  * @returns {Promise<{status, lat?, lon?, accuracyM?, method, explanation, anchor?, anchor2?, target?, candidates, confidence}>}
  */
-export async function resolve(gaz, intent, prev, aoCenter, { forceAnchorId = null } = {}) {
+export async function resolve(gaz, intent, prev, aoCenter, { forceAnchorId = null, units = [] } = {}) {
   const near = prev ?? aoCenter;
   const base = { candidates: [], confidence: intent.confidence ?? 0.5 };
 
@@ -90,8 +101,8 @@ export async function resolve(gaz, intent, prev, aoCenter, { forceAnchorId = nul
     return { ...base, status: 'resolved', ...p, accuracyM: Math.max(30, m * 0.3), method: 'dead_reckoning', explanation: `${m} m ${intent.bearing} of previous position` };
   }
 
-  const r1 = await resolveAnchor(gaz, intent.anchor, near, forceAnchorId);
-  const r2 = intent.anchor2 ? await resolveAnchor(gaz, intent.anchor2, near) : { best: null, candidates: [] };
+  const r1 = await resolveAnchor(gaz, intent.anchor, near, forceAnchorId, units);
+  const r2 = intent.anchor2 ? await resolveAnchor(gaz, intent.anchor2, near, null, units) : { best: null, candidates: [] };
   const candidates = r1.candidates.map((c) => ({ ...featureSummary(c.feature), score: +c.score.toFixed(2), distM: c.distM, via: c.via ?? 'gazetteer' }));
   if (!r1.best) {
     return { ...base, candidates, status: 'unresolved', method: 'anchor_not_found', explanation: `No place matching “${intent.anchor?.name || intent.anchor?.text || '?'}” in the area` };
@@ -158,8 +169,9 @@ export async function resolve(gaz, intent, prev, aoCenter, { forceAnchorId = nul
     case 'towards': {
       if (!prev) return out(a1, 200, 'towards_no_ref', `Heading to ${nm} (no previous position – placed at destination)`, { target: a1, confidence: +(confidence * 0.5).toFixed(2) });
       const d = dist(prev, a1);
-      if (d <= config.arriveRadiusM) return out(a1, 40, 'towards_arrived', `Reached ${nm}`, { target: a1 });
-      const step = Math.min(intent.distance_m ?? config.moveStepM, d);
+      const stepWanted = intent.distance_m ?? config.moveStepM;
+      if (d <= config.arriveRadiusM || d <= stepWanted) return out(a1, 40, 'towards_arrived', `Reached ${nm}`, { target: a1 });
+      const step = stepWanted;
       const p = ll(turf.along(turf.lineString([[prev.lon, prev.lat], [a1.lon, a1.lat]]), step, { units: 'meters' }));
       return out(p, Math.max(40, step * 0.4), 'towards', `Moving ${cardinal(brg(prev, a1))} towards ${nm} (${Math.round(d - step)} m to go)`, { target: a1, heading: Math.round(brg(prev, a1)) });
     }
