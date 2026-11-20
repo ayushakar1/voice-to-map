@@ -49,9 +49,13 @@ class Store {
   }
 
   /** Last located position of a unit (optionally before a given event). */
-  lastPosition(unit, beforeTs = Infinity) {
+  lastPosition(unit, beforeTs = Infinity, bbox = null) {
     for (let i = this.events.length - 1; i >= 0; i--) {
       const e = this.events[i];
+      if (bbox && e.position) {
+        const [south, west, north, east] = bbox;
+        if (e.position.lat < south || e.position.lat > north || e.position.lon < west || e.position.lon > east) continue;
+      }
       if (e.unit === unit && e.ts < beforeTs && e.position) return { ...e.position, ts: e.ts, label: e.result?.explanation };
     }
     return null;

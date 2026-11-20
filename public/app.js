@@ -27,7 +27,14 @@ function drawAO() {
 
 function render() {
   const live = state.replayT === null;
-  const visible = live ? state.events : state.events.filter((e) => e.ts <= state.replayT);
+  const visible = state.events.filter((event) => {
+    if (!live && event.ts > state.replayT) return false;
+    if (!state.ao) return true;
+    if (event.ao) return JSON.stringify(event.ao.bbox) === JSON.stringify(state.ao.bbox);
+    if (!event.position) return false;
+    const [south, west, north, east] = state.ao.bbox;
+    return event.position.lat >= south && event.position.lat <= north && event.position.lon >= west && event.position.lon <= east;
+  });
   layers.units.clearLayers();
 
   const byUnit = new Map();
@@ -91,13 +98,13 @@ function renderTimeline() {
     li.innerHTML = `
       <div class="ev-top"><span><span class="ev-unit">${esc(e.unit)}</span> · ${e.source === 'text' ? '⌨' : '🎙'} ${fmtTime(e.ts)}</span>
         <span title="server: STT ${lat.sttMs ?? '-'} ms · LLM ${lat.llmMs} ms · geo ${lat.geoMs} ms">${client ? `⏱ ${(client / 1000).toFixed(1)} s` : `⚙ ${lat.serverMs} ms`}</span></div>
-      <div class="ev-text">“${esc(e.transcript)}”${e.interpretedAs ? `<div class="ev-expl">heard as: ${esc(e.interpretedAs)}</div>` : ''}</div>
+      <div class="ev-text">“${esc(e.transcript)}”</div>
       <div class="ev-meta">
         <span class="chip">${TYPE_LABEL[i.type] ?? '?'} ${esc(i.relation ?? '')}</span>
         ${r.anchor ? `<span class="chip">${esc(r.anchor.name)}</span>` : ''}
         ${r.anchor2 ? `<span class="chip">${esc(r.anchor2.name)}</span>` : ''}
         <span class="chip ${status[0]}">${status[1]}</span>
-        <span class="chip" title="intent engine">${esc((e.intentEngine ?? '').replace(/^(mistral|llm):/, '').split('/').pop())}</span>
+        <span class="chip" title="intent engine">${esc(e.intentEngine ?? '')}</span>
         ${i.note ? `<span class="chip warn">${esc(i.note)}</span>` : ''}
       </div>
       <div class="ev-expl">${esc(r.explanation ?? '')}</div>
@@ -171,7 +178,7 @@ function renderHeader(msg) {
   const c = msg.capabilities ?? {};
   const g = msg.gazetteer ?? {};
   $('caps').innerHTML = [
-    `<span class="cap ${c.llm ? 'on' : ''}">intent: ${c.llm ? esc(c.llmModel) : 'rule parser'}</span>`,
+    `<span class="cap ${c.llm ? 'on' : ''}">intent: ${c.llm ? `${esc(c.llmProvider ?? 'mistral')} · ${esc(c.llmModel)}` : 'rule parser'}</span>`,
     `<span class="cap ${c.serverStt ? 'on' : ''}">server STT: ${c.serverStt ? esc(c.sttModel) : 'off'}</span>`,
     `<span class="cap ${g.total ? 'on' : ''}" title="${esc(g.source)}">gazetteer: ${g.landmarks ?? 0} places · ${g.streets ?? 0} streets</span>`,
   ].join('');
@@ -179,6 +186,7 @@ function renderHeader(msg) {
   sel.innerHTML = Object.entries(msg.aoPresets ?? {}).map(([k, v]) => `<option value="${k}" ${msg.ao?.id === k ? 'selected' : ''}>${esc(v)}</option>`).join('')
     + (msg.ao?.id === 'custom' ? '<option selected>Custom AO</option>' : '');
   if (!c.serverStt && $('sttMode').value === 'voxtral') $('sttMode').value = 'browser';
+  $('sttMode').querySelector('option[value="voxtral"]').disabled = !c.serverStt;
 }
 
 let speakingTimer;
@@ -363,7 +371,17 @@ $('playBtn').onclick = () => {
 // ---------------------------------------------------------------- misc
 $('aoSelect').addEventListener('change', async (e) => {
   note('Loading area (OSM)…');
-  try { const r = await api('/api/ao', { preset: e.target.value }); note(`Area loaded: ${r.stats.landmarks} places, ${r.stats.streets} streets (${r.stats.source})`); } catch (err) { note(`Error: ${err.message}`); }
+  const controls = [$('aoSelect'), $('ptt'), $('textInput'), $('textForm').querySelector('button')];
+  controls.forEach((control) => { control.disabled = true; });
+  try {
+    const r = await api('/api/ao', { preset: e.target.value });
+    note(`Area loaded: ${r.stats.landmarks} places, ${r.stats.streets} streets (${r.stats.source})`);
+  } catch (err) {
+    $('aoSelect').value = state.ao?.id ?? '';
+    note(`Error: ${err.message}`);
+  } finally {
+    controls.forEach((control) => { control.disabled = false; });
+  }
 });
 $('resetBtn').onclick = async () => { if (confirm('Clear all reports?')) await api('/api/events', null, 'DELETE'); };
 

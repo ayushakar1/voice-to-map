@@ -86,6 +86,8 @@ export function nameSimilarity(query, name, ignore = new Set()) {
   const q = tokens(query).filter((t) => !ignore.has(t));
   const n = tokens(name).filter((t) => !ignore.has(t));
   if (!q.length || !n.length) return 0;
+  // A shared word such as "street" must never match a different street number.
+  if (q.some((token) => /\d/.test(token) && !n.includes(token))) return 0;
   let hit = 0;
   for (const qt of q) {
     let best = 0;

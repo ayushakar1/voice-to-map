@@ -4,7 +4,6 @@ import { extractIntent } from './intent.js';
 import { resolve } from './resolver.js';
 import { gazetteer } from './gazetteer.js';
 import { store } from './store.js';
-import { config } from './config.js';
 
 const NUM = { one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9', zero: '0', un: '1', deux: '2', trois: '3' };
 export function normalizeCallsign(s) {
@@ -28,73 +27,34 @@ export function aoCenter() {
   return { lat: (s + n) / 2, lon: (w + e) / 2 };
 }
 
-const NUM_SOUNDS = {
-  1: ['1', 'one', 'won', 'wan', 'un'], 2: ['2', 'two', 'to', 'too', 'tu', 'deux'], 3: ['3', 'three', 'tree', 'free', 'trois'],
-  4: ['4', 'four', 'for', 'fore', 'quatre'], 5: ['5', 'five', 'fife', 'cinq'], 6: ['6', 'six', 'sicks'], 7: ['7', 'seven'],
-  8: ['8', 'eight', 'ate', 'huit'], 9: ['9', 'nine', 'niner', 'neuf'],
-};
-const lev = (a, b) => { const d = Array.from({ length: a.length + 1 }, (_, i) => [i]); for (let j = 1; j <= b.length; j++) d[0][j] = j;
-  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-  return d[a.length][b.length]; };
-
-/**
- * Speech recognisers mangle callsigns ("brows to" / "Broward to" for "Bravo 2").
- * If the report starts with something that sounds like a KNOWN unit, rewrite it to the real callsign.
- */
-export function repairCallsign(transcript, knownUnits) {
-  const m = transcript.match(/^\s*(?:this is\s+)?([A-Za-zÀ-ÿ]+)[\s,-]+([A-Za-z0-9]+)\b[\s,.:]*/i);
-  if (!m) return transcript;
-  const [w0, w1] = [m[1].toLowerCase(), m[2].toLowerCase()];
-  for (const u of knownUnits) {
-    const p = u.match(/^([A-Za-z]+)\s+(\d)$/);
-    if (!p) continue;
-    const word = p[1].toLowerCase();
-    if (w0 === word) continue; // already correct, let the parser handle it
-    const sounds = NUM_SOUNDS[p[2]] ?? [];
-    if (w0.slice(0, 2) === word.slice(0, 2) && lev(w0, word) <= 4 && sounds.includes(w1)) {
-      return `${u}, ${transcript.slice(m[0].length)}`;
-    }
-  }
-  return transcript;
-}
-
-/** Other units' last positions, so "approaching Alpha 1" can resolve to a unit instead of a landmark. */
-function otherUnits(self) {
-  return [...new Set(store.events.map((e) => e.unit))]
-    .filter((u) => u !== self)
-    .map((u) => ({ unit: u, pos: store.lastPosition(u) }))
-    .filter((x) => x.pos)
-    .map((x) => ({ name: x.unit, lat: x.pos.lat, lon: x.pos.lon }));
-}
-
-export async function processReport({ transcript: rawTranscript, unit, source = 'text', stt = null, receivedAt = Date.now() }) {
+export async function processReport({ transcript, unit, source = 'text', stt = null, receivedAt = Date.now() }) {
   const t0 = Date.now();
+  const ao = gazetteer.ao;
   const defaultUnit = normalizeCallsign(unit) || 'Unit 1';
-  const knownUnits = [...new Set([defaultUnit, ...store.events.map((e) => e.unit)])];
-  const transcript = repairCallsign(rawTranscript, knownUnits);
-  const prevForPrompt = store.lastPosition(defaultUnit);
+  const prevForPrompt = store.lastPosition(defaultUnit, Infinity, ao.bbox);
   const ctx = {
     defaultCallsign: defaultUnit,
-    knownUnits,
     lastPositionText: prevForPrompt?.label ?? null,
-    nearbyNames: gazetteer.namesNear(prevForPrompt ?? aoCenter(), config.llmNearbyNames),
+    nearbyNames: gazetteer.namesNear(prevForPrompt ?? aoCenter(), 80),
   };
   const { intent, engine, ms: llmMs, error: llmError } = await extractIntent(transcript, ctx);
+  if (gazetteer.loading || gazetteer.ao !== ao) throw new Error('Area changed while processing this report. Please submit it again.');
   const callsign = matchCallsign(normalizeCallsign(intent.callsign), defaultUnit);
-  const prev = store.lastPosition(callsign);
+  const prev = store.lastPosition(callsign, Infinity, ao.bbox);
 
   const g0 = Date.now();
-  const result = await resolve(gazetteer, intent, prev, aoCenter(), { units: otherUnits(callsign) });
+  const result = await resolve(gazetteer, intent, prev, aoCenter());
+  if (gazetteer.loading || gazetteer.ao !== ao) throw new Error('Area changed while resolving this report. Please submit it again.');
   const geoMs = Date.now() - g0;
 
   const position = result.status === 'resolved' ? { lat: result.lat, lon: result.lon, accuracyM: result.accuracyM } : null;
   const event = {
     id: crypto.randomUUID(),
     ts: receivedAt,
+    ao: { id: ao.id, bbox: ao.bbox },
     unit: callsign,
     source,
-    transcript: rawTranscript,
-    interpretedAs: transcript !== rawTranscript ? transcript : undefined,
+    transcript,
     stt,
     intent,
     intentEngine: engine,
@@ -124,7 +84,7 @@ export async function chooseCandidate(id, candidateId) {
   if (!e) return null;
   const candidates = e.result?.candidates ?? [];
   const prev = e.prevPosition;
-  const result = await resolve(gazetteer, e.intent, prev, aoCenter(), { forceAnchorId: candidateId, units: otherUnits(e.unit) });
+  const result = await resolve(gazetteer, e.intent, prev, aoCenter(), { forceAnchorId: candidateId });
   result.candidates = candidates; // keep the original list so the operator can switch again
   const position = result.status === 'resolved' ? { lat: result.lat, lon: result.lon, accuracyM: result.accuracyM } : e.position;
   return store.update(id, { result, position, corrected: { at: Date.now(), from: e.position, candidateId } });

@@ -25,7 +25,7 @@ function snapshot() {
     ao: gazetteer.ao,
     aoPresets: Object.fromEntries(Object.entries(AO_PRESETS).map(([k, v]) => [k, v.label])),
     gazetteer: gazetteer.stats(),
-    capabilities: { llm: !!config.llmKey, serverStt: !!config.mistralKey, llmModel: config.llmModel, sttModel: config.sttModel },
+    capabilities: { llm: !!config.llmKey, llmProvider: config.llmProvider, serverStt: !!config.mistralKey, llmModel: config.llmModel, sttModel: config.sttModel },
     events: store.events,
     colors: store.colors,
   };
@@ -48,6 +48,7 @@ app.get('/api/state', (_req, res) => res.json(snapshot()));
 
 // Text report (typed, or transcribed in the browser)
 app.post('/api/report', wrap(async (req, res) => {
+  if (gazetteer.loading) return res.status(503).json({ error: 'Map data is loading. Please try again shortly.' });
   const { text, unit, source = 'text', stt = null } = req.body ?? {};
   if (!text?.trim()) return res.status(400).json({ error: 'text required' });
   const ev = await processReport({ transcript: text.trim(), unit, source, stt });
@@ -57,6 +58,7 @@ app.post('/api/report', wrap(async (req, res) => {
 
 // Audio report: Voxtral STT + pipeline in one round trip
 app.post('/api/voice', upload.single('audio'), wrap(async (req, res) => {
+  if (gazetteer.loading) return res.status(503).json({ error: 'Map data is loading. Please try again shortly.' });
   if (!req.file) return res.status(400).json({ error: 'audio required' });
   const receivedAt = Date.now();
   const lang = req.body.lang && req.body.lang !== 'auto' ? req.body.lang : null;
@@ -87,12 +89,14 @@ app.post('/api/events/:id/choose', wrap(async (req, res) => {
 app.delete('/api/events', (_req, res) => { store.reset(); broadcast(snapshot()); res.json({ ok: true }); });
 
 app.post('/api/ao', wrap(async (req, res) => {
+  if (gazetteer.loading) return res.status(409).json({ error: 'An area is loading. Please wait before switching again.' });
   const { preset, bbox, force } = req.body ?? {};
   let ao;
   if (Array.isArray(bbox) && bbox.length === 4) ao = { id: 'custom', label: 'Custom AO', bbox: bbox.map(Number), lang: 'en' };
   else if (AO_PRESETS[preset]) ao = { id: preset, ...AO_PRESETS[preset] };
   else return res.status(400).json({ error: 'preset or bbox required' });
-  const stats = await gazetteer.load(ao, { force: !!force });
+  await gazetteer.load(ao, { force: !!force });
+  const stats = gazetteer.stats();
   broadcast(snapshot());
   res.json({ ao, stats });
 }));
@@ -110,8 +114,11 @@ app.get('/api/gazetteer/landmarks', (_req, res) => {
 
 const ao = currentAO();
 console.log(`[boot] loading gazetteer for ${ao.label} …`);
-gazetteer.load(ao).then((s) => console.log('[boot] gazetteer:', s));
+gazetteer.load(ao).then(() => {
+  console.log('[boot] gazetteer:', gazetteer.stats());
+  broadcast(snapshot());
+}).catch((error) => console.error('[boot] gazetteer failed:', error.message));
 server.listen(config.port, () => {
   console.log(`[boot] Voice-to-Map on http://localhost:${config.port}`);
-  console.log(`[boot] LLM: ${config.llmKey ? `${config.llmModel} @ ${config.llmBase}` : 'OFF (rule parser)'} | server STT: ${config.mistralKey ? config.sttModel : 'OFF (use browser STT or typing)'}`);
+  console.log(`[boot] LLM: ${config.llmKey ? `${config.llmProvider}/${config.llmModel}` : 'OFF (rule parser)'} | server STT: ${config.mistralKey ? config.sttModel : 'OFF (use browser STT or typing)'}`);
 });

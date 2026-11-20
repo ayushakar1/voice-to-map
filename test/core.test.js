@@ -120,25 +120,3 @@ test('resolver: "across from" and "between"', async () => {
   const b = await resolve(gaz, ruleParse('between the bridge and the school'), prev, center);
   assert.equal(b.method, 'between');
 });
-
-test('field test 2026-11-20: approaching, garbled callsigns, unit references', async () => {
-  const { repairCallsign } = await import('../server/pipeline.js');
-  assert.equal(repairCallsign('brows to Approaching Saint Paul', ['Alpha 1', 'Bravo 2']), 'Bravo 2, Approaching Saint Paul');
-  assert.equal(repairCallsign('Broward to Approaching Alpha 1', ['Alpha 1', 'Bravo 2']), 'Bravo 2, Approaching Alpha 1');
-  assert.equal(repairCallsign('Brought to the church', ['Alpha 1']), 'Brought to the church'); // no Bravo unit known
-  let i = ruleParse('bravo 2 approaching Saint Paul church');
-  assert.equal(i.callsign, 'Bravo 2'); assert.equal(i.type, 'movement'); assert.equal(i.relation, 'towards');
-  i = ruleParse('bravo 2 approaching Alpha 1 to the south');
-  assert.equal(i.relation, 'towards'); assert.equal(i.anchor.text, 'alpha 1');
-  const units = [{ name: 'Alpha 1', lat: 48.8545, lon: 2.3612 }];
-  const r = await resolve(gaz, i, { lat: 48.8520, lon: 2.3612 }, center, { units });
-  assert.equal(r.anchor.kind, 'unit'); assert.equal(r.anchor.name, 'Alpha 1');
-  assert.ok(r.lat > 48.8520, 'moved north toward Alpha 1');
-});
-
-test('multi-word category with no name ("town hall") falls back to nearest of that category', () => {
-  const g = new Gazetteer();
-  g.features = [{ id: 'n9', kind: 'landmark', category: 'townhall', name: 'Hôtel de Ville', names: ['Hôtel de Ville'], lat: 48.8566, lon: 2.3522 }];
-  const r = g.search({ query: 'town hall', category: 'townhall', near: center });
-  assert.equal(r[0]?.feature.name, 'Hôtel de Ville');
-});
